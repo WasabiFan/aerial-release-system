@@ -27,11 +27,18 @@ const byte resetVal = 0b10101010;
 const byte ackVal = 0b11110000;
 
 #if ROLE == ROLE_SENDER
+#define HEARTBEAT_THRESH_MILLIS 1000
+
 uint8_t triggerButtonPin = 2;
 uint8_t resetButtonPin = 3;
 
 Switch triggerButton = Switch(triggerButtonPin);
 Switch resetButton = Switch(resetButtonPin);
+
+uint8_t heartbeatLEDPin = 13;
+
+unsigned long lastHeartbeat = 0;
+bool isCommHealthy = false;
 
 #else
 #define TRIGGER_SERVO_ANGLE 90
@@ -62,7 +69,9 @@ void setup()
     radio.startListening();
     radio.writeAckPayload(1, &ackVal, 1);
 
-#if ROLE == ROLE_RECEIVER
+#if ROLE == ROLE_SENDER
+    pinMode(heartbeatLEDPin, OUTPUT);
+#else
     actuationServo.attach(servoPin);
     actuationServo.write(RESET_SERVO_ANGLE);
 #endif
@@ -76,6 +85,7 @@ byte sendByte(byte val) {
     if (radio.write(&val, 1)) {
         if (!radio.available()) {
             Serial.println("Empty recv!");
+            return 0;
         }
         else {
             radio.read(&recvByte, 1);
@@ -84,7 +94,22 @@ byte sendByte(byte val) {
     }
     else {
         Serial.println("Unknown failure");
+        return 0;
     }
+
+    return recvByte;
+}
+
+void validateAck(byte ackResponse) {
+    if (ackResponse == ackVal)
+        isCommHealthy = true;
+    else {
+        isCommHealthy = false;
+        Serial.println("Bad ack received! This probably means that the connection is unstable.");
+    }
+
+    // We have validated that data was successfully sent; we can consider this a heartbeat.
+    lastHeartbeat = millis();
 }
 #endif
 
@@ -96,11 +121,17 @@ void loop()
 
     // Require a long press to activate
     if (triggerButton.longPress()) {
-        sendByte(triggerVal);
+        validateAck(sendByte(triggerVal));
     }
     else if (resetButton.pushed()) {
-        sendByte(resetVal);
+        validateAck(sendByte(resetVal));
     }
+    else if (millis() - lastHeartbeat >= HEARTBEAT_THRESH_MILLIS) {
+        // Re-use ack byte for heartbeat
+        validateAck(sendByte(triggerVal));
+    }
+
+    digitalWrite(heartbeatLEDPin, isCommHealthy);
 #else
     if (radio.available()) {
         byte recvByte;
@@ -113,6 +144,10 @@ void loop()
         else if (recvByte == resetVal) {
             Serial.println("RESET");
             actuationServo.write(RESET_SERVO_ANGLE);
+        }
+        else if (recvByte == ackVal) {
+            // Heartbeat received. Just no-op.
+            Serial.println("Heartbeat byte received");
         }
         else {
             Serial.print("Received bad signal ");
