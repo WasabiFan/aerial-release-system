@@ -82,7 +82,7 @@ _longPress       ___________________________| |_________________________________
 */
 
 #include "Arduino.h"
-#include "Switch.h"
+#include "~Switch.h"
 
 Switch::Switch(byte _pin, byte PinMode, bool polarity, int debouncePeriod, int longPressPeriod, int doubleClickPeriod, int deglitchPeriod) :
 	pin(_pin), polarity(polarity), deglitchPeriod(deglitchPeriod), debouncePeriod(debouncePeriod), longPressPeriod(longPressPeriod), doubleClickPeriod(doubleClickPeriod)

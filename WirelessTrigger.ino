@@ -11,7 +11,7 @@
 #include <RF24.h>
 
 // Smart switch utils
-#include "Switch.h"
+#include "~Switch.h"
 
 #define ROLE_SENDER 0
 #define ROLE_RECEIVER 1
