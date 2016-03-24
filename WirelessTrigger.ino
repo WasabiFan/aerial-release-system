@@ -1,14 +1,23 @@
-#include <Servo.h>
-#include <RF24_config.h>
+// Standard libraries
+#include <Arduino.h>
 #include <printf.h>
+
+// Servo controller
+#include <Servo.h>
+
+// Radio comms
+#include <RF24_config.h>
 #include <nRF24L01.h>
 #include <RF24.h>
+
+// Smart switch utils
+#include "Switch.h"
 
 #define ROLE_SENDER 0
 #define ROLE_RECEIVER 1
 
-// SET THE TARGET DEVICE HERE
-#define ROLE ROLE_RECEIVER
+// SET THE TARGET ROLE HERE -------------------------------
+#define ROLE ROLE_SENDER
 
 RF24 radio(7, 8);
 byte addresses[][6] = { *(byte*)"1Node", *(byte*)"2Node" };
@@ -21,8 +30,9 @@ const byte ackVal = 0b11110000;
 uint8_t triggerButtonPin = 2;
 uint8_t resetButtonPin = 3;
 
-volatile bool shouldTrigger = false;
-volatile bool shouldReset = false;
+Switch triggerButton = Switch(triggerButtonPin);
+Switch resetButton = Switch(resetButtonPin);
+
 #else
 #define TRIGGER_SERVO_ANGLE 90
 #define RESET_SERVO_ANGLE 0
@@ -55,10 +65,6 @@ void setup()
 #if ROLE == ROLE_SENDER
     pinMode(triggerButtonPin, INPUT_PULLUP);
     pinMode(resetButtonPin, INPUT_PULLUP);
-
-    // See https://www.arduino.cc/en/Reference/AttachInterrupt for more info
-    attachInterrupt(digitalPinToInterrupt(triggerButtonPin), triggerInterrupt, FALLING);
-    attachInterrupt(digitalPinToInterrupt(resetButtonPin), resetInterrupt, FALLING);
 #else
     actuationServo.attach(servoPin);
     actuationServo.write(RESET_SERVO_ANGLE);
@@ -66,14 +72,6 @@ void setup()
 }
 
 #if ROLE == ROLE_SENDER
-void triggerInterrupt() {
-    shouldTrigger = true;
-}
-
-void resetInterrupt() {
-    shouldReset = true;
-}
-
 byte sendByte(byte val) {
     byte recvByte;
 
@@ -96,15 +94,15 @@ byte sendByte(byte val) {
 void loop()
 {
 #if ROLE == ROLE_SENDER
-    if (shouldTrigger) {
+    triggerButton.poll();
+    resetButton.poll();
+
+    // Require a long press to activate
+    if (triggerButton.longPress()) {
         sendByte(triggerVal);
-
-        shouldTrigger = false;
     }
-    else if (shouldReset) {
+    else if (resetButton.pushed()) {
         sendByte(resetVal);
-
-        shouldReset = false;
     }
 #else
     if (radio.available()) {
