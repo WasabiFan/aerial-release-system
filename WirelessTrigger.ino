@@ -62,10 +62,7 @@ void setup()
     radio.startListening();
     radio.writeAckPayload(1, &ackVal, 1);
 
-#if ROLE == ROLE_SENDER
-    pinMode(triggerButtonPin, INPUT_PULLUP);
-    pinMode(resetButtonPin, INPUT_PULLUP);
-#else
+#if ROLE == ROLE_RECEIVER
     actuationServo.attach(servoPin);
     actuationServo.write(RESET_SERVO_ANGLE);
 #endif
