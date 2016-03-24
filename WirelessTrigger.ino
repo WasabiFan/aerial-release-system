@@ -35,7 +35,7 @@ uint8_t resetButtonPin = 3;
 Switch triggerButton = Switch(triggerButtonPin);
 Switch resetButton = Switch(resetButtonPin);
 
-uint8_t heartbeatLEDPin = 13;
+uint8_t heartbeatLEDPin = 4;
 
 unsigned long lastHeartbeat = 0;
 bool isCommHealthy = false;
@@ -89,7 +89,8 @@ byte sendByte(byte val) {
         }
         else {
             radio.read(&recvByte, 1);
-            Serial.print("Received ack byte " + recvByte);
+            Serial.print("Received ack byte ");
+            Serial.println((int)recvByte);
         }
     }
     else {
@@ -101,8 +102,10 @@ byte sendByte(byte val) {
 }
 
 void validateAck(byte ackResponse) {
-    if (ackResponse == ackVal)
+    if (ackResponse == ackVal) {
         isCommHealthy = true;
+        Serial.println("Comms healthy");
+    }
     else {
         isCommHealthy = false;
         Serial.println("Bad ack received! This probably means that the connection is unstable.");
@@ -128,7 +131,7 @@ void loop()
     }
     else if (millis() - lastHeartbeat >= HEARTBEAT_THRESH_MILLIS) {
         // Re-use ack byte for heartbeat
-        validateAck(sendByte(triggerVal));
+        validateAck(sendByte(ackVal));
     }
 
     digitalWrite(heartbeatLEDPin, isCommHealthy);
