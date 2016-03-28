@@ -35,7 +35,8 @@ uint8_t resetButtonPin = 3;
 Switch triggerButton = Switch(triggerButtonPin);
 Switch resetButton = Switch(resetButtonPin);
 
-uint8_t heartbeatLEDPin = 4;
+uint8_t heartbeatLEDGreenPin = 5;
+uint8_t heartbeatLEDRedPin = 6;
 
 unsigned long lastHeartbeat = 0;
 bool isCommHealthy = false;
@@ -70,7 +71,8 @@ void setup()
     radio.writeAckPayload(1, &ackVal, 1);
 
 #if ROLE == ROLE_SENDER
-    pinMode(heartbeatLEDPin, OUTPUT);
+    pinMode(heartbeatLEDGreenPin, OUTPUT);
+    pinMode(heartbeatLEDRedPin, OUTPUT);
 #else
     actuationServo.attach(servoPin);
     actuationServo.write(RESET_SERVO_ANGLE);
@@ -134,7 +136,8 @@ void loop()
         validateAck(sendByte(ackVal));
     }
 
-    digitalWrite(heartbeatLEDPin, isCommHealthy);
+    analogWrite(heartbeatLEDGreenPin, isCommHealthy * 255);
+    analogWrite(heartbeatLEDRedPin, !isCommHealthy * 255);
 #else
     if (radio.available()) {
         byte recvByte;
