@@ -10,6 +10,9 @@
 #include <nRF24L01.h>
 #include <RF24.h>
 
+// Display
+#include <LiquidCrystal.h>
+
 // Smart switch utils
 #include "~Switch.h"
 
@@ -17,9 +20,11 @@
 #define ROLE_RECEIVER 1
 
 // SET THE TARGET ROLE HERE -------------------------------
-#define ROLE ROLE_SENDER
+#define ROLE ROLE_RECEIVER
 
 RF24 radio(7, 8);
+// TODO: Update pinouts
+LiquidCrystal display(12, 11, 9, 2, 3, 4, 5);
 byte addresses[][6] = { *(byte*)"1Node", *(byte*)"2Node" };
 
 const byte triggerVal = 0b11111111;
@@ -29,13 +34,13 @@ const byte ackVal = 0b11110000;
 #if ROLE == ROLE_SENDER
 #define HEARTBEAT_THRESH_MILLIS 1000
 
-uint8_t triggerButtonPin = 2;
-uint8_t resetButtonPin = 3;
+uint8_t triggerButtonPin = A0;
+uint8_t resetButtonPin = A1;
 
 Switch triggerButton = Switch(triggerButtonPin);
 Switch resetButton = Switch(resetButtonPin);
 
-uint8_t heartbeatLEDGreenPin = 5;
+uint8_t heartbeatLEDGreenPin = 10;
 uint8_t heartbeatLEDRedPin = 6;
 
 unsigned long lastHeartbeat = 0;
@@ -53,6 +58,9 @@ Servo actuationServo;
 void setup()
 {
     Serial.begin(115200);
+
+    display.begin(16, 2);
+    display.write("This is a test");
 
     radio.begin();
 
