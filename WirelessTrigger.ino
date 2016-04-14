@@ -9,6 +9,7 @@
 #include <RF24_config.h>
 #include <nRF24L01.h>
 #include <RF24.h>
+#include <printf.h>
 
 // Display
 #include <LiquidCrystal.h>
@@ -20,11 +21,14 @@
 #define ROLE_RECEIVER 1
 
 // SET THE TARGET ROLE HERE -------------------------------
-#define ROLE ROLE_RECEIVER
+#define ROLE ROLE_SENDER
+//#define DISABLE_DISPLAY
 
 RF24 radio(7, 8);
-// TODO: Update pinouts
-LiquidCrystal display(12, 11, 9, 2, 3, 4, 5);
+
+#if !defined(DISABLE_DISPLAY) && ROLE == SENDER
+LiquidCrystal display(12, 11, 9, 5, 4, 3, 2);
+#endif
 byte addresses[][6] = { *(byte*)"1Node", *(byte*)"2Node" };
 
 const byte triggerVal = 0b11111111;
@@ -58,9 +62,7 @@ Servo actuationServo;
 void setup()
 {
     Serial.begin(115200);
-
-    display.begin(16, 2);
-    display.write("This is a test");
+    printf_begin();
 
     radio.begin();
 
@@ -76,7 +78,13 @@ void setup()
 #endif
 
     radio.startListening();
+    radio.printDetails();
     radio.writeAckPayload(1, &ackVal, 1);
+
+#if !defined(DISABLE_DISPLAY) && ROLE == SENDER
+    display.begin(16, 2);
+    display.print("Hello, world!");
+#endif
 
 #if ROLE == ROLE_SENDER
     pinMode(heartbeatLEDGreenPin, OUTPUT);
@@ -92,12 +100,15 @@ byte sendByte(byte val) {
     byte recvByte;
 
     radio.stopListening();
+    Serial.println("Stopped");
     if (radio.write(&val, 1)) {
+        Serial.println("Wrote");
         if (!radio.available()) {
             Serial.println("Empty recv!");
             return 0;
         }
         else {
+            Serial.println("Reading");
             radio.read(&recvByte, 1);
             Serial.print("Received ack byte ");
             Serial.println((int)recvByte);
@@ -129,21 +140,34 @@ void validateAck(byte ackResponse) {
 void loop()
 {
 #if ROLE == ROLE_SENDER
+#if !defined(DISABLE_DISPLAY)
+    display.begin(16, 2);
+    display.clear();
+    display.setCursor(0, 0);
+    display.print("foo");
+#endif
+
+    Serial.println("Checking buttons");
     triggerButton.poll();
     resetButton.poll();
+    Serial.println("Done polling");
 
     // Require a long press to activate
     if (triggerButton.longPress()) {
+        Serial.println("Sending trigger");
         validateAck(sendByte(triggerVal));
     }
-    else if (resetButton.pushed()) {
+    else if (resetButton.longPress()) {
+        Serial.println("Sending reset");
         validateAck(sendByte(resetVal));
     }
     else if (millis() - lastHeartbeat >= HEARTBEAT_THRESH_MILLIS) {
         // Re-use ack byte for heartbeat
+        Serial.println("Sending ping");
         validateAck(sendByte(ackVal));
     }
 
+    Serial.println("After checks");
     analogWrite(heartbeatLEDGreenPin, isCommHealthy * 255);
     analogWrite(heartbeatLEDRedPin, !isCommHealthy * 255);
 #else
