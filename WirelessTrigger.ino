@@ -26,8 +26,8 @@
 
 RF24 radio(7, 8);
 
-#if !defined(DISABLE_DISPLAY) && ROLE == SENDER
-LiquidCrystal display(12, 11, 9, 5, 4, 3, 2);
+#if !defined(DISABLE_DISPLAY) && ROLE == ROLE_SENDER
+LiquidCrystal display(10, 9, 5, 4, 3, 2);
 #endif
 byte addresses[][6] = { *(byte*)"1Node", *(byte*)"2Node" };
 
@@ -37,12 +37,15 @@ const byte ackVal = 0b11110000;
 
 #if ROLE == ROLE_SENDER
 #define HEARTBEAT_THRESH_MILLIS 1000
+#define DISPLAY_TIME_MILLIS 1000
 
 uint8_t triggerButtonPin = A0;
 uint8_t resetButtonPin = A1;
 
 Switch triggerButton = Switch(triggerButtonPin);
 Switch resetButton = Switch(resetButtonPin);
+unsigned long lastTriggerSignalTime = 0;
+bool lastTriggerType = false;
 
 uint8_t heartbeatLEDGreenPin = 10;
 uint8_t heartbeatLEDRedPin = 6;
@@ -64,6 +67,11 @@ void setup()
     Serial.begin(115200);
     printf_begin();
 
+#if !defined(DISABLE_DISPLAY) && ROLE == ROLE_SENDER
+    display.begin(16, 2);
+    display.print("Display initialized");
+#endif
+
     radio.begin();
 
     radio.enableAckPayload();
@@ -81,13 +89,8 @@ void setup()
     radio.printDetails();
     radio.writeAckPayload(1, &ackVal, 1);
 
-#if !defined(DISABLE_DISPLAY) && ROLE == SENDER
-    display.begin(16, 2);
-    display.print("Hello, world!");
-#endif
-
 #if ROLE == ROLE_SENDER
-    pinMode(heartbeatLEDGreenPin, OUTPUT);
+    //pinMode(heartbeatLEDGreenPin, OUTPUT);
     pinMode(heartbeatLEDRedPin, OUTPUT);
 #else
     actuationServo.attach(servoPin);
@@ -100,15 +103,12 @@ byte sendByte(byte val) {
     byte recvByte;
 
     radio.stopListening();
-    Serial.println("Stopped");
     if (radio.write(&val, 1)) {
-        Serial.println("Wrote");
         if (!radio.available()) {
             Serial.println("Empty recv!");
             return 0;
         }
         else {
-            Serial.println("Reading");
             radio.read(&recvByte, 1);
             Serial.print("Received ack byte ");
             Serial.println((int)recvByte);
@@ -140,25 +140,25 @@ void validateAck(byte ackResponse) {
 void loop()
 {
 #if ROLE == ROLE_SENDER
-#if !defined(DISABLE_DISPLAY)
-    display.begin(16, 2);
-    display.clear();
-    display.setCursor(0, 0);
-    display.print("foo");
-#endif
 
-    Serial.println("Checking buttons");
     triggerButton.poll();
     resetButton.poll();
-    Serial.println("Done polling");
 
     // Require a long press to activate
     if (triggerButton.longPress()) {
         Serial.println("Sending trigger");
+
+        lastTriggerType = true;
+        lastTriggerSignalTime = millis();
+
         validateAck(sendByte(triggerVal));
     }
     else if (resetButton.longPress()) {
         Serial.println("Sending reset");
+
+        lastTriggerType = false;
+        lastTriggerSignalTime = millis();
+
         validateAck(sendByte(resetVal));
     }
     else if (millis() - lastHeartbeat >= HEARTBEAT_THRESH_MILLIS) {
@@ -167,9 +167,22 @@ void loop()
         validateAck(sendByte(ackVal));
     }
 
-    Serial.println("After checks");
-    analogWrite(heartbeatLEDGreenPin, isCommHealthy * 255);
+    //analogWrite(heartbeatLEDGreenPin, isCommHealthy * 255);
     analogWrite(heartbeatLEDRedPin, !isCommHealthy * 255);
+
+#if !defined(DISABLE_DISPLAY)
+    // NOTE: Always send spaces after text to clear cells past desired content.
+
+    display.setCursor(0, 0);
+    display.print(isCommHealthy ? "Comms: HEALTHY  " : "Comms: UNHEALTHY");
+    display.setCursor(0, 1);
+
+    if (millis() - lastTriggerSignalTime < DISPLAY_TIME_MILLIS)
+        display.print(lastTriggerType ? "Sent TRIGGER" : "Sent RESET  ");
+    else
+        display.print("UPTIME: " + String(millis() / 1000) + "        ");
+#endif
+
 #else
     if (radio.available()) {
         byte recvByte;
