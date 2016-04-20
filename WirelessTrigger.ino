@@ -21,17 +21,16 @@
 #define ROLE_SKY 1
 
 // SET THE TARGET ROLE HERE -------------------------------
-#define ROLE ROLE_SKY
-//#define DISABLE_DISPLAY
+#define ROLE ROLE_GROUND
+#define DISABLE_DISPLAY
 
 RF24 radio(7, 8);
 
 #if !defined(DISABLE_DISPLAY) && ROLE == ROLE_GROUND
 LiquidCrystal display(10, 9, 5, 4, 3, 2);
 #endif
-byte addresses[][6] = { *(byte*)"1Node", *(byte*)"2Node", *(byte*)"ANode" };
+byte addresses[][6] = { *(byte*)"1Node", *(byte*)"2Node" };
 byte primaryPipeIndex = 1;
-byte altitudePipeIndex = 2;
 
 // TODO: Choose numbers that make sense
 const byte triggerVal = 0b11111111;
@@ -86,7 +85,6 @@ void setup()
 #if ROLE == ROLE_GROUND
     radio.openWritingPipe(addresses[0]);
     radio.openReadingPipe(primaryPipeIndex, addresses[1]);
-    radio.openReadingPipe(altitudePipeIndex, addresses[2]);
 #else
     radio.openWritingPipe(addresses[1]);
     radio.openReadingPipe(primaryPipeIndex, addresses[0]);
@@ -133,8 +131,7 @@ byte sendData(void* val, int numBytes) {
             radio.read(&recvByte, 1);
             radio.writeAckPayload(1, &ackVal, 1);
 
-            Serial.print("Received ack byte ");
-            Serial.println((int)recvByte);
+            Serial.print("Received ack");
         }
     }
     else {
@@ -204,10 +201,15 @@ void loop()
     if (radio.available()) {
         Serial.println("Data available");
         byte recvByte = receiveByte();
+
         if (recvByte == heightInitialVal)
         {
-            //receiveData(&lastAltitude, sizeof(float));
-            Serial.println("Got altitude");
+            // TODO: Figure out why the first byte isn't already gone
+            byte buffer[sizeof(float) + 1];
+            receiveData(&buffer, sizeof(buffer));
+
+            lastAltitude = *(float*)(&(buffer[1]));
+            Serial.println("Got altitude " + String(lastAltitude));
         }
         else
         {
@@ -236,8 +238,6 @@ void loop()
         // Re-use ack byte for heartbeat
         Serial.println("Sending ping");
         validateAck(sendByte(ackVal));
-
-        Serial.println(radio.available() ? "Data are AVAILABLE" : "Data ARE NOT available");
     }
 
     //analogWrite(heartbeatLEDGreenPin, isCommHealthy * 255);
@@ -270,13 +270,13 @@ void loop()
         }
         else if (recvByte == ackVal) {
             Serial.println("Heartbeat byte received");
-            Serial.println(radio.available() ? "AFTER AVAIL" : "AFTER NOT");
             float altitude = 9;
 
-            byte foo[1] = { heightInitialVal };
-            //foo[1] = altitude;
-
-            //validateAck(sendByte(heightInitialVal));//sendData(&foo, sizeof(foo)));
+            byte packetData[sizeof(float) + 1] = { heightInitialVal };
+            float* packetFloatPortion = (float*)&packetData[1];
+            *packetFloatPortion = altitude;
+            
+            validateAck(sendData(&packetData, sizeof(packetData)));
         }
         else {
             Serial.print("Received unknown signal ");
