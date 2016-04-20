@@ -2,7 +2,7 @@
 #define ROLE_SKY 1
 
 // SET THE TARGET ROLE HERE -------------------------------
-#define ROLE ROLE_GROUND
+#define ROLE ROLE_SKY
 
 // Standard libraries
 #include <Arduino.h>
@@ -23,6 +23,11 @@
 #include "~Switch.h"
 
 #else
+
+// Barometric pressure sensor
+#include <Wire.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BMP085_U.h>
 
 // Servo controller
 #include <Servo.h>
@@ -72,6 +77,10 @@ float lastAltitude = -1;
 // Should be a PWM pin
 uint8_t servoPin = 5;
 Servo actuationServo;
+
+
+// Parameter is sensor ID
+Adafruit_BMP085_Unified bmp = Adafruit_BMP085_Unified(10085);
 #endif
 
 void setup()
@@ -107,6 +116,10 @@ void setup()
 #else
     actuationServo.attach(servoPin);
     actuationServo.write(RESET_SERVO_ANGLE);
+
+    if (!bmp.begin())
+        Serial.print(F("BMP085 connection failed"));
+
 #endif
 }
 
@@ -195,6 +208,21 @@ byte receiveByte() {
     return val;
 }
 
+#if ROLE == ROLE_SKY
+float getAltitude() {
+    sensors_event_t event;
+    bmp.getEvent(&event);
+
+    float temperature;
+    bmp.getTemperature(&temperature);
+
+    float seaLevelPressure = SENSORS_PRESSURE_SEALEVELHPA; // TODO: Find a more accurate value?
+
+    return bmp.pressureToAltitude(seaLevelPressure, event.pressure, temperature);
+}
+
+#endif
+
 void loop()
 {
 #if ROLE == ROLE_GROUND
@@ -257,7 +285,7 @@ void loop()
     display.setCursor(0, 1);
 
     if (millis() - lastTriggerSignalTime < DISPLAY_TIME_MILLIS)
-        display.print(lastTriggerType ? "Sent TRIGGER" : "Sent RESET  ");
+        display.print(lastTriggerType ? "Sent TRIGGER" : "Sent RESET       ");
     else
         display.print("ALTITUDE: " + String(lastAltitude) + "        ");
 #endif
@@ -277,8 +305,7 @@ void loop()
         else if (recvByte == ackVal) {
             Serial.println(F("Heartbeat byte received"));
 
-            // TODO: Stop using 9 as the hard-coded altitude
-            float altitude = 9;
+            float altitude = getAltitude();
 
             byte packetData[sizeof(float) + 1] = { heightInitialVal };
             float* packetFloatPortion = (float*)&packetData[1];
