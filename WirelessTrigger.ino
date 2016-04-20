@@ -1,9 +1,12 @@
+#define ROLE_GROUND 0
+#define ROLE_SKY 1
+
+// SET THE TARGET ROLE HERE -------------------------------
+#define ROLE ROLE_GROUND
+
 // Standard libraries
 #include <Arduino.h>
 #include <printf.h>
-
-// Servo controller
-#include <Servo.h>
 
 // Radio comms
 #include <RF24_config.h>
@@ -11,17 +14,21 @@
 #include <RF24.h>
 #include <printf.h>
 
+#if ROLE == ROLE_GROUND
+
 // Display
 #include <LiquidCrystal.h>
 
 // Smart switch utils
 #include "~Switch.h"
 
-#define ROLE_GROUND 0
-#define ROLE_SKY 1
+#else
 
-// SET THE TARGET ROLE HERE -------------------------------
-#define ROLE ROLE_GROUND
+// Servo controller
+#include <Servo.h>
+
+#endif
+
 #define DISABLE_DISPLAY
 
 RF24 radio(7, 8);
@@ -108,9 +115,9 @@ byte sendData(void* val, int numBytes) {
     byte recvByte;
 
     if (radio.available())
-        Serial.println("Data available before request was sent! This probably means something was not read correctly.");
+        Serial.println(F("Data available before request was sent! This probably means something was not read correctly."));
 
-    Serial.print("Sending data ");
+    Serial.print(F("Sending data "));
     for (int i = 0; i < numBytes; i++)
     {
         Serial.print(((byte*)val)[i]);
@@ -124,18 +131,18 @@ byte sendData(void* val, int numBytes) {
 
     if (writeResult) {
         if (!radio.available()) {
-            Serial.println("Empty recv!");
+            Serial.println(F("Empty recv!"));
             return 0;
         }
         else {
             radio.read(&recvByte, 1);
             radio.writeAckPayload(1, &ackVal, 1);
 
-            Serial.print("Received ack");
+            Serial.print(F("Received ack"));
         }
     }
     else {
-        Serial.println("Unknown failure");
+        Serial.println(F("Unknown failure"));
         return 0;
     }
 
@@ -152,14 +159,13 @@ void validateAck(byte ackResponse) {
 #if ROLE == ROLE_GROUND
         isCommHealthy = true;
 #endif
-        Serial.println("Comms healthy");
+        Serial.println(F("Comms healthy"));
     }
     else {
 #if ROLE == ROLE_GROUND
         isCommHealthy = false;
 #endif
-        Serial.println("Bad ack received! This probably means that the connection is unstable.");
-        Serial.println(ackResponse);
+        Serial.println(F("Bad ack received! This probably means that the connection is unstable."));
     }
 
 #if ROLE == ROLE_GROUND
@@ -184,7 +190,7 @@ bool receiveData(void* recvBuf, uint8_t numBytes) {
 
 byte receiveByte() {
     byte val = 0;
-    Serial.println(receiveData(&val, 1));
+    receiveData(&val, 1);
 
     return val;
 }
@@ -199,7 +205,7 @@ void loop()
     // Check for and handle incoming bytes first to make sure
     // that buffers are clear. If they aren't, acks may not work correctly.
     if (radio.available()) {
-        Serial.println("Data available");
+        Serial.println(F("Data available"));
         byte recvByte = receiveByte();
 
         if (recvByte == heightInitialVal)
@@ -213,13 +219,13 @@ void loop()
         }
         else
         {
-            Serial.println("Received unknown header data!");
+            Serial.println(F("Received unknown header data!"));
         }
     }
 
     // Require a long press to activate
     if (triggerButton.longPress()) {
-        Serial.println("Sending trigger");
+        Serial.println(F("Sending trigger"));
 
         lastTriggerType = true;
         lastTriggerSignalTime = millis();
@@ -227,7 +233,7 @@ void loop()
         validateAck(sendByte(triggerVal));
     }
     else if (resetButton.longPress()) {
-        Serial.println("Sending reset");
+        Serial.println(F("Sending reset"));
 
         lastTriggerType = false;
         lastTriggerSignalTime = millis();
@@ -236,7 +242,7 @@ void loop()
     }
     else if (millis() - lastHeartbeat >= HEARTBEAT_THRESH_MILLIS) {
         // Re-use ack byte for heartbeat
-        Serial.println("Sending ping");
+        Serial.println(F("Sending ping"));
         validateAck(sendByte(ackVal));
     }
 
@@ -261,15 +267,17 @@ void loop()
         byte recvByte = receiveByte();
         
         if (recvByte == triggerVal) {
-            Serial.println("TRIGGER");
+            Serial.println(F("TRIGGER"));
             actuationServo.write(TRIGGER_SERVO_ANGLE);
         }
         else if (recvByte == resetVal) {
-            Serial.println("RESET");
+            Serial.println(F("RESET"));
             actuationServo.write(RESET_SERVO_ANGLE);
         }
         else if (recvByte == ackVal) {
-            Serial.println("Heartbeat byte received");
+            Serial.println(F("Heartbeat byte received"));
+
+            // TODO: Stop using 9 as the hard-coded altitude
             float altitude = 9;
 
             byte packetData[sizeof(float) + 1] = { heightInitialVal };
@@ -279,7 +287,7 @@ void loop()
             validateAck(sendData(&packetData, sizeof(packetData)));
         }
         else {
-            Serial.print("Received unknown signal ");
+            Serial.print(F("Received unknown signal "));
             Serial.println((int)recvByte);
         }
     }
