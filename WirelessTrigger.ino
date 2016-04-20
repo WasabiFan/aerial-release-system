@@ -31,8 +31,10 @@ LiquidCrystal display(10, 9, 5, 4, 3, 2);
 #endif
 byte addresses[][6] = { *(byte*)"1Node", *(byte*)"2Node" };
 
+// TODO: Choose numbers that make sense
 const byte triggerVal = 0b11111111;
 const byte resetVal = 0b10101010;
+const byte heightInitialVal = 0b01010101;
 const byte ackVal = 0b11110000;
 
 #if ROLE == ROLE_SENDER
@@ -52,6 +54,8 @@ uint8_t heartbeatLEDRedPin = 6;
 
 unsigned long lastHeartbeat = 0;
 bool isCommHealthy = false;
+
+float lastAltitude = -1;
 
 #else
 #define TRIGGER_SERVO_ANGLE 90
@@ -98,18 +102,34 @@ void setup()
 #endif
 }
 
-#if ROLE == ROLE_SENDER
-byte sendByte(byte val) {
+
+byte sendData(void* val, int numBytes) {
     byte recvByte;
 
+    if (radio.available())
+        Serial.println("Data available before request was sent! This probably means something was not read correctly.");
+
+    Serial.print("Sending data ");
+    for (int i = 0; i < numBytes; i++)
+    {
+        Serial.print(((byte*)val)[i]);
+        Serial.print(" ");
+    }
+    Serial.println();
+
     radio.stopListening();
-    if (radio.write(&val, 1)) {
+    bool writeResult = radio.write(val, numBytes);
+    radio.startListening();
+
+    if (writeResult) {
         if (!radio.available()) {
             Serial.println("Empty recv!");
             return 0;
         }
         else {
             radio.read(&recvByte, 1);
+            radio.writeAckPayload(1, &ackVal, 1);
+
             Serial.print("Received ack byte ");
             Serial.println((int)recvByte);
         }
@@ -122,20 +142,52 @@ byte sendByte(byte val) {
     return recvByte;
 }
 
+byte sendByte(byte val)
+{
+    return sendData(&val, 1);
+}
+
 void validateAck(byte ackResponse) {
     if (ackResponse == ackVal) {
+#if ROLE == ROLE_SENDER
         isCommHealthy = true;
+#endif
         Serial.println("Comms healthy");
     }
     else {
+#if ROLE == ROLE_SENDER
         isCommHealthy = false;
+#endif
         Serial.println("Bad ack received! This probably means that the connection is unstable.");
+        Serial.println(ackResponse);
     }
 
+#if ROLE == ROLE_SENDER
     // We have validated that data was successfully sent; we can consider this a heartbeat.
     lastHeartbeat = millis();
-}
 #endif
+}
+
+bool receiveData(void* recvBuf, uint8_t numBytes) {
+    if (radio.available()) {
+        radio.read(recvBuf, numBytes);
+
+        radio.writeAckPayload(1, &ackVal, 1);
+
+        return true;
+    }
+    else
+    {
+        return false;
+    }
+}
+
+byte receiveByte() {
+    byte val = 0;
+    Serial.println(receiveData(&val, 1));
+
+    return val;
+}
 
 void loop()
 {
@@ -143,6 +195,22 @@ void loop()
 
     triggerButton.poll();
     resetButton.poll();
+
+    // Check for and handle incoming bytes first to make sure
+    // that buffers are clear. If they aren't, acks may not work correctly.
+    if (radio.available()) {
+        Serial.println("Data available");
+        byte recvByte = receiveByte();
+        if (recvByte == heightInitialVal)
+        {
+            //receiveData(&lastAltitude, sizeof(float));
+            Serial.println("Got altitude");
+        }
+        else
+        {
+            Serial.println("Received unknown header data!");
+        }
+    }
 
     // Require a long press to activate
     if (triggerButton.longPress()) {
@@ -165,6 +233,8 @@ void loop()
         // Re-use ack byte for heartbeat
         Serial.println("Sending ping");
         validateAck(sendByte(ackVal));
+
+        Serial.println(radio.available() ? "Data are AVAILABLE" : "Data ARE NOT available");
     }
 
     //analogWrite(heartbeatLEDGreenPin, isCommHealthy * 255);
@@ -180,14 +250,13 @@ void loop()
     if (millis() - lastTriggerSignalTime < DISPLAY_TIME_MILLIS)
         display.print(lastTriggerType ? "Sent TRIGGER" : "Sent RESET  ");
     else
-        display.print("UPTIME: " + String(millis() / 1000) + "        ");
+        display.print("ALTITUDE: " + String(lastAltitude) + "        ");
 #endif
 
 #else
-    if (radio.available()) {
-        byte recvByte;
-        radio.read(&recvByte, 1);
-
+    if(radio.available()) {
+        byte recvByte = receiveByte();
+        
         if (recvByte == triggerVal) {
             Serial.println("TRIGGER");
             actuationServo.write(TRIGGER_SERVO_ANGLE);
@@ -197,15 +266,19 @@ void loop()
             actuationServo.write(RESET_SERVO_ANGLE);
         }
         else if (recvByte == ackVal) {
-            // Heartbeat received. Just no-op.
             Serial.println("Heartbeat byte received");
+            Serial.println(radio.available() ? "AFTER AVAIL" : "AFTER NOT");
+            float altitude = 9;
+
+            byte foo[1] = { heightInitialVal };
+            //foo[1] = altitude;
+
+            //validateAck(sendByte(heightInitialVal));//sendData(&foo, sizeof(foo)));
         }
         else {
-            Serial.print("Received bad signal ");
+            Serial.print("Received unknown signal ");
             Serial.println((int)recvByte);
         }
-
-        radio.writeAckPayload(1, &ackVal, 1);
     }
 #endif
 }
