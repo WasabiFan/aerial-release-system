@@ -17,19 +17,21 @@
 // Smart switch utils
 #include "~Switch.h"
 
-#define ROLE_SENDER 0
-#define ROLE_RECEIVER 1
+#define ROLE_GROUND 0
+#define ROLE_SKY 1
 
 // SET THE TARGET ROLE HERE -------------------------------
-#define ROLE ROLE_SENDER
+#define ROLE ROLE_SKY
 //#define DISABLE_DISPLAY
 
 RF24 radio(7, 8);
 
-#if !defined(DISABLE_DISPLAY) && ROLE == ROLE_SENDER
+#if !defined(DISABLE_DISPLAY) && ROLE == ROLE_GROUND
 LiquidCrystal display(10, 9, 5, 4, 3, 2);
 #endif
-byte addresses[][6] = { *(byte*)"1Node", *(byte*)"2Node" };
+byte addresses[][6] = { *(byte*)"1Node", *(byte*)"2Node", *(byte*)"ANode" };
+byte primaryPipeIndex = 1;
+byte altitudePipeIndex = 2;
 
 // TODO: Choose numbers that make sense
 const byte triggerVal = 0b11111111;
@@ -37,7 +39,7 @@ const byte resetVal = 0b10101010;
 const byte heightInitialVal = 0b01010101;
 const byte ackVal = 0b11110000;
 
-#if ROLE == ROLE_SENDER
+#if ROLE == ROLE_GROUND
 #define HEARTBEAT_THRESH_MILLIS 1000
 #define DISPLAY_TIME_MILLIS 1000
 
@@ -71,7 +73,7 @@ void setup()
     Serial.begin(115200);
     printf_begin();
 
-#if !defined(DISABLE_DISPLAY) && ROLE == ROLE_SENDER
+#if !defined(DISABLE_DISPLAY) && ROLE == ROLE_GROUND
     display.begin(16, 2);
     display.print("Display initialized");
 #endif
@@ -81,19 +83,20 @@ void setup()
     radio.enableAckPayload();
     radio.enableDynamicPayloads();
 
-#if ROLE == ROLE_SENDER
+#if ROLE == ROLE_GROUND
     radio.openWritingPipe(addresses[0]);
-    radio.openReadingPipe(1, addresses[1]);
+    radio.openReadingPipe(primaryPipeIndex, addresses[1]);
+    radio.openReadingPipe(altitudePipeIndex, addresses[2]);
 #else
     radio.openWritingPipe(addresses[1]);
-    radio.openReadingPipe(1, addresses[0]);
+    radio.openReadingPipe(primaryPipeIndex, addresses[0]);
 #endif
 
     radio.startListening();
     radio.printDetails();
     radio.writeAckPayload(1, &ackVal, 1);
 
-#if ROLE == ROLE_SENDER
+#if ROLE == ROLE_GROUND
     //pinMode(heartbeatLEDGreenPin, OUTPUT);
     pinMode(heartbeatLEDRedPin, OUTPUT);
 #else
@@ -149,20 +152,20 @@ byte sendByte(byte val)
 
 void validateAck(byte ackResponse) {
     if (ackResponse == ackVal) {
-#if ROLE == ROLE_SENDER
+#if ROLE == ROLE_GROUND
         isCommHealthy = true;
 #endif
         Serial.println("Comms healthy");
     }
     else {
-#if ROLE == ROLE_SENDER
+#if ROLE == ROLE_GROUND
         isCommHealthy = false;
 #endif
         Serial.println("Bad ack received! This probably means that the connection is unstable.");
         Serial.println(ackResponse);
     }
 
-#if ROLE == ROLE_SENDER
+#if ROLE == ROLE_GROUND
     // We have validated that data was successfully sent; we can consider this a heartbeat.
     lastHeartbeat = millis();
 #endif
@@ -191,7 +194,7 @@ byte receiveByte() {
 
 void loop()
 {
-#if ROLE == ROLE_SENDER
+#if ROLE == ROLE_GROUND
 
     triggerButton.poll();
     resetButton.poll();
