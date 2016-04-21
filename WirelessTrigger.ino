@@ -110,7 +110,7 @@ void setup()
 
     radio.startListening();
     radio.printDetails();
-    radio.writeAckPayload(1, &ackVal, 1);
+    radio.writeAckPayload(primaryPipeIndex, &ackVal, 1);
 
 #if ROLE == ROLE_GROUND
     //pinMode(heartbeatLEDGreenPin, OUTPUT);
@@ -158,9 +158,12 @@ void loop()
         if (recvByte == heightInitialVal)
         {
             // TODO: Figure out why the first byte isn't already gone
+
+            // Declare a buffer to store the packet and read the data into it
             byte buffer[sizeof(float) + 1];
             receiveData(&buffer, sizeof(buffer));
 
+            // Dereference the data portion of the packet as a float
             lastAltitude = *(float*)(&(buffer[1]));
             Serial.println("Got altitude " + String(lastAltitude));
         }
@@ -174,6 +177,7 @@ void loop()
     if (triggerButton.longPress()) {
         Serial.println(F("Sending trigger byte"));
 
+        // Record the last-sent signal
         lastTriggerType = true;
         lastTriggerSignalTime = millis();
 
@@ -182,6 +186,7 @@ void loop()
     else if (resetButton.longPress()) {
         Serial.println(F("Sending reset byte"));
 
+        // Record the last-sent signal
         lastTriggerType = false;
         lastTriggerSignalTime = millis();
 
@@ -206,7 +211,7 @@ void loop()
         display.print(lastTriggerType ? "Sent TRIGGER" : "Sent RESET      ");
     }
     else {
-        String altString = (lastAltitude == -1) ? "Null" : String(lastAltitude);
+        String altString = (lastAltitude == -1) ? "Unknown" : String(lastAltitude);
         display.print("ALTITUDE: " + altString + "        ");
     }
 #endif
@@ -226,9 +231,13 @@ void loop()
         case ackVal:
             Serial.println(F("Heartbeat byte received"));
 
+            // Get the altitude value
             float altitude = getAltitude();
 
+            // Construct the packet. Has a one-byte header.
             byte packetData[sizeof(float) + 1] = { heightInitialVal };
+            // Get a pointer to the last 4 bytes of the packet buffer 
+            // and set it to the altitude value
             float* packetFloatPortion = (float*)&packetData[1];
             *packetFloatPortion = altitude;
 
@@ -264,8 +273,8 @@ void validateAck(byte ackResponse) {
 bool receiveData(void* recvBuf, uint8_t numBytes) {
     if (radio.available()) {
         radio.read(recvBuf, numBytes);
-        // acks that we received it
-        radio.writeAckPayload(1, &ackVal, 1);
+        // Prep an ack for the next time we receive data
+        radio.writeAckPayload(primaryPipeIndex, &ackVal, 1);
         return true;
     }
     else {
@@ -280,13 +289,14 @@ byte receiveByte() {
     return val;
 }
 
-// send numBytes bytes on the radio from val
+// Sends arbitrary data of length numBytes from the given address
 byte sendData(void* val, int numBytes) {
     byte recvByte;
 
     if (radio.available())
         Serial.println(F("Data available before request was sent! This probably means something was not read correctly."));
 
+    // Print bytes that are going to be sent
     Serial.print(F("Sending data {"));
     for (int i = 0; i < numBytes; i++)
     {
@@ -295,18 +305,19 @@ byte sendData(void* val, int numBytes) {
     }
     Serial.println(F("}"));
 
+    // Stop listening temporarily so we can write
     radio.stopListening();
-    bool writeResult = radio.write(val, numBytes);
+    bool writeSuccess = radio.write(val, numBytes);
     radio.startListening();
 
-    if (writeResult) {
+    if (writeSuccess) {
         if (!radio.available()) {
-            Serial.println(F("Empty recv!"));
+            Serial.println(F("Empty receive buffer! Was expecting an ack."));
             return 0;
         }
         else {
             radio.read(&recvByte, 1);
-            radio.writeAckPayload(1, &ackVal, 1);
+            radio.writeAckPayload(primaryPipeIndex, &ackVal, 1);
 
             Serial.print(F("Received ack"));
         }
