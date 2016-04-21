@@ -54,7 +54,7 @@ const byte ackVal = 0b11110000; // 240 decimal
 #define HEARTBEAT_INTERVAL_MILLIS 1000
 #define DISPLAY_TIME_MILLIS 1000
 
-                                // can be digital pinsa
+// can be digital pinsa
 uint8_t triggerButtonPin = A0;
 uint8_t resetButtonPin = A1;
 
@@ -83,6 +83,7 @@ Servo actuationServo;
 
 // Parameter is sensor ID
 Adafruit_BMP085_Unified bmp = Adafruit_BMP085_Unified(10085);
+bool bmpConnected = false;
 #endif
 
 void setup()
@@ -119,8 +120,11 @@ void setup()
     actuationServo.attach(servoPin);
     actuationServo.write(RESET_SERVO_ANGLE);
 
-    if (!bmp.begin())
-        Serial.print(F("BMP085 connection failed"));
+    /*Serial.print(F("BMP085 connecting"));
+    if (bmp.begin(BMP085_MODE_STANDARD))
+        Serial.print(F("BMP085 connection succeeded"));
+    else
+        Serial.print(F("BMP085 connection failed"));*/
 
 #endif
 }
@@ -129,15 +133,19 @@ void setup()
 
 #if ROLE == ROLE_SKY
 float getAltitude() {
-    sensors_event_t event;
-    bmp.getEvent(&event);
+    if (bmpConnected) {
+        sensors_event_t event;
+        bmp.getEvent(&event);
 
-    float temperature;
-    bmp.getTemperature(&temperature);
+        float temperature;
+        bmp.getTemperature(&temperature);
 
-    float seaLevelPressure = SENSORS_PRESSURE_SEALEVELHPA; // TODO: Find a more accurate value?
+        float seaLevelPressure = SENSORS_PRESSURE_SEALEVELHPA; // TODO: Find a more accurate value?
 
-    return bmp.pressureToAltitude(seaLevelPressure, event.pressure, temperature);
+        return bmp.pressureToAltitude(seaLevelPressure, event.pressure, temperature);
+    }
+    
+    return -1;
 }
 
 #endif
@@ -199,7 +207,8 @@ void loop()
     // NOTE: Always send spaces after text to clear cells past desired content.
 
     display.setCursor(0, 0);
-    display.print("Comms: " + (isCommHealthy ? "HEALTHY  " : "UNHEALTHY"));
+    String healthStr = isCommHealthy ? "HEALTHY  " : "UNHEALTHY";
+    display.print("Comms: " + healthStr);
     display.setCursor(0, 1);
 
     if (millis() - lastTriggerSignalTime < DISPLAY_TIME_MILLIS) {
@@ -224,6 +233,7 @@ void loop()
             actuationServo.write(RESET_SERVO_ANGLE);
             break;
         case ackVal:
+        { // Enclose this in braces to localize variables
             Serial.println(F("Heartbeat byte received"));
 
             float altitude = getAltitude();
@@ -234,6 +244,7 @@ void loop()
 
             validateAck(sendData(&packetData, sizeof(packetData)));
             break;
+        }
         default:
             Serial.print(F("Received unknown signal "));
             Serial.println((int)recvByte);
@@ -308,7 +319,7 @@ byte sendData(void* val, int numBytes) {
             radio.read(&recvByte, 1);
             radio.writeAckPayload(1, &ackVal, 1);
 
-            Serial.print(F("Received ack"));
+            Serial.println(F("Received ack"));
         }
     }
     else {
