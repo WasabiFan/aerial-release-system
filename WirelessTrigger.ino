@@ -2,7 +2,7 @@
 #define ROLE_SKY 1
 
 // SET THE TARGET ROLE HERE -------------------------------
-#define ROLE ROLE_SKY
+#define ROLE ROLE_GROUND
 
 // Standard libraries
 #include <Arduino.h>
@@ -84,12 +84,14 @@ Servo actuationServo;
 // Parameter is sensor ID
 Adafruit_BMP085_Unified bmp = Adafruit_BMP085_Unified(10085);
 bool bmpConnected = false;
+uint8_t bmpPowerPin = 4;
 #endif
 
 void setup()
 {
     Serial.begin(115200);
     printf_begin();
+
 
 #if !defined(DISABLE_DISPLAY) && ROLE == ROLE_GROUND
     display.begin(16, 2);
@@ -115,16 +117,21 @@ void setup()
 
 #if ROLE == ROLE_GROUND
     //pinMode(heartbeatLEDGreenPin, OUTPUT);
-    pinMode(heartbeatLEDRedPin, OUTPUT);
+    //pinMode(heartbeatLEDRedPin, OUTPUT);
 #else
     actuationServo.attach(servoPin);
     actuationServo.write(RESET_SERVO_ANGLE);
 
-    /*Serial.print(F("BMP085 connecting"));
-    if (bmp.begin(BMP085_MODE_STANDARD))
+    pinMode(bmpPowerPin, OUTPUT);
+    digitalWrite(bmpPowerPin, HIGH);
+    Serial.print(F("BMP085 connecting"));
+    if (bmp.begin())
+    {
+        bmpConnected = true;
         Serial.print(F("BMP085 connection succeeded"));
+    }
     else
-        Serial.print(F("BMP085 connection failed"));*/
+        Serial.print(F("BMP085 connection failed"));
 
 #endif
 }
@@ -270,7 +277,9 @@ void validateAck(byte ackResponse) {
         Serial.println(F("Comms healthy"));
     }
     else {
-        Serial.println(F("Bad ack received! This probably means that the connection is unstable."));
+        Serial.print(F("Bad ack received: "));
+        Serial.println(ackResponse);
+        Serial.println(F("This probably means that the connection is unstable."));
     }
 
 #if ROLE == ROLE_GROUND
