@@ -15,9 +15,6 @@
 
 #if ROLE == ROLE_GROUND
 
-// Display
-#include <LiquidCrystal.h>
-
 // Smart switch utils
 #include "~Switch.h"
 
@@ -33,13 +30,8 @@
 
 #endif
 
-#define DISABLE_DISPLAY
-
 RF24 radio(7, 8);
 
-#if !defined(DISABLE_DISPLAY) && ROLE == ROLE_GROUND
-LiquidCrystal display(10, 9, 5, 4, 3, 2);
-#endif
 // radio comm lines
 byte pipeNames[][6] = { *(byte*)"1Node", *(byte*)"2Node" };
 byte primaryPipeIndex = 1;
@@ -52,34 +44,38 @@ const byte ackVal = 0b11110000; // 240 decimal
 
 #if ROLE == ROLE_GROUND
 #define HEARTBEAT_INTERVAL_MILLIS 1000
-#define DISPLAY_TIME_MILLIS 1000
+// Altitude is in feet
+#define ALTITUDE_TARGET_THRESH_FEET 100
 
 // can be digital pinsa
 uint8_t triggerButtonPin = A0;
 uint8_t resetButtonPin = A1;
+uint8_t calibButtonPin = A1;
 
 Switch triggerButton = Switch(triggerButtonPin);
 Switch resetButton = Switch(resetButtonPin);
-unsigned long lastTriggerSignalTime = 0;
-bool lastTriggerType = false;
+Switch calibButton = Switch(calibButtonPin);
 
 // can be digital pins
-uint8_t heartbeatLEDGreenPin = 10;
+uint8_t heartbeatLEDGreenPin = 5;
+uint8_t heartbeatLEDBluePin = 3;
 uint8_t heartbeatLEDRedPin = 6;
 
 unsigned long lastHeartbeat = 0;
 bool isCommHealthy = false;
 
+float rawCalibrationAltitude = 0;
+bool isAltCalibrated = false;
 float lastAltitude = -1;
 
 #else
 #define TRIGGER_SERVO_ANGLE 90
 #define RESET_SERVO_ANGLE 0
+#define METERS_TO_FEET_RATIO (381./1250.)
 
 // Should be a PWM pin
 uint8_t servoPin = 5;
 Servo actuationServo;
-
 
 // Parameter is sensor ID
 Adafruit_BMP085_Unified bmp = Adafruit_BMP085_Unified(10085);
@@ -91,12 +87,6 @@ void setup()
 {
     Serial.begin(115200);
     printf_begin();
-
-
-#if !defined(DISABLE_DISPLAY) && ROLE == ROLE_GROUND
-    display.begin(16, 2);
-    display.print("Display initialized");
-#endif
 
     radio.begin();
 
@@ -116,8 +106,9 @@ void setup()
     radio.writeAckPayload(primaryPipeIndex, &ackVal, 1);
 
 #if ROLE == ROLE_GROUND
-    //pinMode(heartbeatLEDGreenPin, OUTPUT);
-    //pinMode(heartbeatLEDRedPin, OUTPUT);
+    pinMode(heartbeatLEDGreenPin, OUTPUT);
+    pinMode(heartbeatLEDBluePin, OUTPUT);
+    pinMode(heartbeatLEDRedPin, OUTPUT);
 #else
     actuationServo.attach(servoPin);
     actuationServo.write(RESET_SERVO_ANGLE);
@@ -128,17 +119,23 @@ void setup()
     if (bmp.begin())
     {
         bmpConnected = true;
-        Serial.print(F("BMP085 connection succeeded"));
+        Serial.println(F("BMP085 connection succeeded"));
     }
     else
-        Serial.print(F("BMP085 connection failed"));
+        Serial.println(F("BMP085 connection failed"));
 
 #endif
 }
 
 
 
-#if ROLE == ROLE_SKY
+#if ROLE == ROLE_GROUND
+void setStatusLED(int r, int g, int b) {
+    analogWrite(heartbeatLEDRedPin, r);
+    analogWrite(heartbeatLEDGreenPin, g);
+    analogWrite(heartbeatLEDBluePin, b);
+}
+#else
 float getAltitude() {
     if (bmpConnected) {
         sensors_event_t event;
@@ -149,9 +146,9 @@ float getAltitude() {
 
         float seaLevelPressure = SENSORS_PRESSURE_SEALEVELHPA; // TODO: Find a more accurate value?
 
-        return bmp.pressureToAltitude(seaLevelPressure, event.pressure, temperature);
+        return bmp.pressureToAltitude(seaLevelPressure, event.pressure, temperature) * METERS_TO_FEET_RATIO;
     }
-    
+
     return -1;
 }
 
@@ -163,6 +160,7 @@ void loop()
 
     triggerButton.poll();
     resetButton.poll();
+    calibButton.poll();
 
     // Check for and handle incoming bytes first to make sure
     // that buffers are clear. If they aren't, acks may not work correctly.
@@ -179,7 +177,12 @@ void loop()
             receiveData(&buffer, sizeof(buffer));
 
             // Dereference the data portion of the packet as a float
-            lastAltitude = *(float*)(&(buffer[1]));
+            float newAltitude = *(float*)(&(buffer[1]));
+            if (isAltCalibrated)
+                lastAltitude = newAltitude - rawCalibrationAltitude;
+            else
+                lastAltitude = newAltitude;
+
             Serial.println("Got altitude " + String(lastAltitude));
         }
         else
@@ -192,20 +195,17 @@ void loop()
     if (triggerButton.longPress()) {
         Serial.println(F("Sending trigger byte"));
 
-        // Record the last-sent signal
-        lastTriggerType = true;
-        lastTriggerSignalTime = millis();
-
         validateAck(sendByte(triggerVal));
     }
     else if (resetButton.longPress()) {
         Serial.println(F("Sending reset byte"));
 
-        // Record the last-sent signal
-        lastTriggerType = false;
-        lastTriggerSignalTime = millis();
-
         validateAck(sendByte(resetVal));
+    }
+    else if (calibButton.longPress()) {
+        // TODO: If we don't have a last altitude, complain
+        rawCalibrationAltitude = lastAltitude;
+        isAltCalibrated = true;
     }
     else if (millis() - lastHeartbeat >= HEARTBEAT_INTERVAL_MILLIS) {
         // Re-use ack byte for heartbeat
@@ -213,25 +213,15 @@ void loop()
         validateAck(sendByte(ackVal));
     }
 
-    digitalWrite(heartbeatLEDRedPin, isCommHealthy ? LOW : HIGH);
+    bool altitudeAboveThreshold = isAltCalibrated && lastAltitude >= ALTITUDE_TARGET_THRESH_FEET;
+    if (isCommHealthy && altitudeAboveThreshold)
+        setStatusLED(0, 0, 255);
 
-#if !defined(DISABLE_DISPLAY)
-    // NOTE: Always send spaces after text to clear cells past desired content.
+    else if (isCommHealthy)
+        setStatusLED(0, 255, 0);
 
-    display.setCursor(0, 0);
-    String healthStr = isCommHealthy ? "HEALTHY  " : "UNHEALTHY";
-    display.print("Comms: " + healthStr);
-    display.setCursor(0, 1);
-
-    if (millis() - lastTriggerSignalTime < DISPLAY_TIME_MILLIS) {
-        display.print(lastTriggerType ? "Sent TRIGGER" : "Sent RESET      ");
-    }
-    else {
-        String altString = (lastAltitude == -1) ? "Unknown" : String(lastAltitude);
-        display.print("ALTITUDE: " + altString + "        ");
-    }
-#endif
-
+    else
+        setStatusLED(255, 0, 0);
 #else
     if (radio.available()) {
         byte recvByte = receiveByte();
@@ -321,7 +311,8 @@ byte sendData(void* val, int numBytes) {
     for (int i = 0; i < numBytes; i++)
     {
         Serial.print(((byte*)val)[i]);
-        Serial.print(F(", "));
+        if(i < numBytes - 1)
+            Serial.print(F(", "));
     }
     Serial.println(F("}"));
 
