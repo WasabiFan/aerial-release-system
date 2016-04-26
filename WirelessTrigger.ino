@@ -51,10 +51,10 @@ const byte heightInitialVal = 0b01010101; // 85 decimal
 const byte ackVal = 0b11110000; // 240 decimal
 
 #if ROLE == ROLE_GROUND
-#define HEARTBEAT_INTERVAL_MILLIS 1000
+#define HEARTBEAT_INTERVAL_MILLIS 300
 #define DISPLAY_TIME_MILLIS 1000
 
-// can be digital pinsa
+                                // can be digital pinsa
 uint8_t triggerButtonPin = A0;
 uint8_t resetButtonPin = A1;
 
@@ -76,10 +76,14 @@ float lastAltitude = -1;
 #define TRIGGER_SERVO_ANGLE 90
 #define RESET_SERVO_ANGLE 0
 
-// Should be a PWM pin
+#define ALTITUDE_SMOOTHING 5
+
+                                // Should be a PWM pin
 uint8_t servoPin = 5;
 Servo actuationServo;
 
+float lastAltitudes[ALTITUDE_SMOOTHING];
+int lastAltitudeIndex;
 
 // Parameter is sensor ID
 Adafruit_BMP085_Unified bmp = Adafruit_BMP085_Unified(10085);
@@ -122,9 +126,9 @@ void setup()
 
     /*Serial.print(F("BMP085 connecting"));
     if (bmp.begin(BMP085_MODE_STANDARD))
-        Serial.print(F("BMP085 connection succeeded"));
+    Serial.print(F("BMP085 connection succeeded"));
     else
-        Serial.print(F("BMP085 connection failed"));*/
+    Serial.print(F("BMP085 connection failed"));*/
 
 #endif
 }
@@ -140,12 +144,28 @@ float getAltitude() {
         float temperature;
         bmp.getTemperature(&temperature);
 
-        float seaLevelPressure = SENSORS_PRESSURE_SEALEVELHPA; // TODO: Find a more accurate value?
+        float seaLevelPressure = SENSORS_PRESSURE_SEALEVELHPA;
 
-        return bmp.pressureToAltitude(seaLevelPressure, event.pressure, temperature);
+        float currentAlt = bmp.pressureToAltitude(seaLevelPressure, event.pressure, temperature);
+        return smoothAltitude(currentAlt);
     }
-    
+
     return -1;
+}
+float smoothAltitude(float newAlt) {
+    // cycle every time this is called
+    lastAltitudes[lastAltitudeIndex] = newAlt;
+    lastAltitudeIndex++;
+    if (lastAltitudeIndex >= ALTITUDE_SMOOTHING) {
+        lastAltitudeIndex = 0;
+    }
+
+    // get average
+    float sum = 0;
+    for (int i = 0; i < ALTITUDE_SMOOTHING; i++) {
+        sum += lastAltitudes[i];
+    }
+    return sum / ALTITUDE_SMOOTHING;
 }
 
 #endif
