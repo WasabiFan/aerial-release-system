@@ -43,7 +43,7 @@ const byte heightInitialVal = 0b01010101; // 85 decimal
 const byte ackVal = 0b11110000; // 240 decimal
 
 #if ROLE == ROLE_GROUND
-#define HEARTBEAT_INTERVAL_MILLIS 1000
+#define HEARTBEAT_INTERVAL_MILLIS 300
 // Altitude is in feet
 #define ALTITUDE_TARGET_THRESH_FEET 10
 
@@ -74,9 +74,14 @@ float rawLastAltitude = -1;
 #define RESET_SERVO_ANGLE 0
 #define METERS_TO_FEET_RATIO (1250./381.)
 
+#define ALTITUDE_SMOOTHING 5
+
 // Should be a PWM pin
 uint8_t servoPin = 5;
 Servo actuationServo;
+
+float lastAltitudes[ALTITUDE_SMOOTHING];
+int lastAltitudeIndex;
 
 // Parameter is sensor ID
 Adafruit_BMP085_Unified bmp = Adafruit_BMP085_Unified(10085);
@@ -145,12 +150,28 @@ float getAltitude() {
         float temperature;
         bmp.getTemperature(&temperature);
 
-        float seaLevelPressure = SENSORS_PRESSURE_SEALEVELHPA; // TODO: Find a more accurate value?
+        float seaLevelPressure = SENSORS_PRESSURE_SEALEVELHPA;
 
-        return bmp.pressureToAltitude(seaLevelPressure, event.pressure, temperature) * METERS_TO_FEET_RATIO;
+        float currentAlt = bmp.pressureToAltitude(seaLevelPressure, event.pressure, temperature) * METERS_TO_FEET_RATIO;
+        return smoothAltitude(currentAlt);
+    }
+    
+    return -1;
+}
+float smoothAltitude(float newAlt) {
+    // cycle every time this is called
+    lastAltitudes[lastAltitudeIndex] = newAlt;
+    lastAltitudeIndex++;
+    if (lastAltitudeIndex >= ALTITUDE_SMOOTHING) {
+        lastAltitudeIndex = 0;
     }
 
-    return -1;
+    // get average
+    float sum = 0;
+    for (int i = 0; i < ALTITUDE_SMOOTHING; i++) {
+        sum += lastAltitudes[i];
+    }
+    return sum / ALTITUDE_SMOOTHING;
 }
 
 #endif
@@ -316,7 +337,7 @@ byte sendData(void* val, int numBytes) {
     {
         Serial.print(((byte*)val)[i]);
         if(i < numBytes - 1)
-            Serial.print(F(", "));
+        Serial.print(F(", "));
     }
     Serial.println(F("}"));
 
