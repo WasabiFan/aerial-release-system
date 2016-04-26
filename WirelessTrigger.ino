@@ -45,12 +45,12 @@ const byte ackVal = 0b11110000; // 240 decimal
 #if ROLE == ROLE_GROUND
 #define HEARTBEAT_INTERVAL_MILLIS 1000
 // Altitude is in feet
-#define ALTITUDE_TARGET_THRESH_FEET 100
+#define ALTITUDE_TARGET_THRESH_FEET 10
 
 // can be digital pinsa
 uint8_t triggerButtonPin = A0;
 uint8_t resetButtonPin = A1;
-uint8_t calibButtonPin = A1;
+uint8_t calibButtonPin = A2;
 
 Switch triggerButton = Switch(triggerButtonPin);
 Switch resetButton = Switch(resetButtonPin);
@@ -67,11 +67,12 @@ bool isCommHealthy = false;
 float rawCalibrationAltitude = 0;
 bool isAltCalibrated = false;
 float lastAltitude = -1;
+float rawLastAltitude = -1;
 
 #else
 #define TRIGGER_SERVO_ANGLE 90
 #define RESET_SERVO_ANGLE 0
-#define METERS_TO_FEET_RATIO (381./1250.)
+#define METERS_TO_FEET_RATIO (1250./381.)
 
 // Should be a PWM pin
 uint8_t servoPin = 5;
@@ -177,11 +178,11 @@ void loop()
             receiveData(&buffer, sizeof(buffer));
 
             // Dereference the data portion of the packet as a float
-            float newAltitude = *(float*)(&(buffer[1]));
+            rawLastAltitude = *(float*)(&(buffer[1]));
             if (isAltCalibrated)
-                lastAltitude = newAltitude - rawCalibrationAltitude;
+                lastAltitude = rawLastAltitude - rawCalibrationAltitude;
             else
-                lastAltitude = newAltitude;
+                lastAltitude = rawLastAltitude;
 
             Serial.println("Got altitude " + String(lastAltitude));
         }
@@ -202,9 +203,10 @@ void loop()
 
         validateAck(sendByte(resetVal));
     }
-    else if (calibButton.longPress()) {
+    else if (calibButton.pushed()) {
         // TODO: If we don't have a last altitude, complain
-        rawCalibrationAltitude = lastAltitude;
+        rawCalibrationAltitude = rawLastAltitude;
+        Serial.println("New calibrated base altitude: " + String(rawCalibrationAltitude));
         isAltCalibrated = true;
     }
     else if (millis() - lastHeartbeat >= HEARTBEAT_INTERVAL_MILLIS) {
@@ -213,15 +215,17 @@ void loop()
         validateAck(sendByte(ackVal));
     }
 
+    //Serial.println("Current calibrated altitude: " + String(lastAltitude));
+
     bool altitudeAboveThreshold = isAltCalibrated && lastAltitude >= ALTITUDE_TARGET_THRESH_FEET;
     if (isCommHealthy && altitudeAboveThreshold)
-        setStatusLED(0, 0, 255);
+        setStatusLED(0, 255, 0); // Green
 
     else if (isCommHealthy)
-        setStatusLED(0, 255, 0);
+        setStatusLED(0, 0, 255); // Blue
 
     else
-        setStatusLED(255, 0, 0);
+        setStatusLED(255, 0, 0); // Red
 #else
     if (radio.available()) {
         byte recvByte = receiveByte();
