@@ -2,7 +2,7 @@
 #define ROLE_SKY 1
 
 // SET THE TARGET ROLE HERE -------------------------------
-#define ROLE ROLE_GROUND
+#define ROLE ROLE_SKY
 
 // Standard libraries
 #include <Arduino.h>
@@ -74,7 +74,7 @@ float rawLastAltitude = -1;
 #define RESET_SERVO_ANGLE 0
 #define METERS_TO_FEET_RATIO (1250./381.)
 
-#define ALTITUDE_SMOOTHING 5
+#define ALTITUDE_SMOOTHING 10
 
 // Should be a PWM pin
 uint8_t servoPin = 5;
