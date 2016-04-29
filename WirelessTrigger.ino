@@ -45,7 +45,7 @@ const byte ackVal = 0b11110000; // 240 decimal
 #if ROLE == ROLE_GROUND
 #define HEARTBEAT_INTERVAL_MILLIS 300
 // Altitude is in feet
-#define ALTITUDE_TARGET_THRESH_FEET 10
+#define ALTITUDE_TARGET_THRESH_FEET 100
 
 // can be digital pinsa
 uint8_t triggerButtonPin = A0;
@@ -78,6 +78,7 @@ float rawLastAltitude = -1;
 
 // Should be a PWM pin
 uint8_t servoPin = 5;
+uint8_t resetPin = 9;
 Servo actuationServo;
 
 float lastAltitudes[ALTITUDE_SMOOTHING];
@@ -119,6 +120,9 @@ void setup()
     actuationServo.attach(servoPin);
     actuationServo.write(RESET_SERVO_ANGLE);
 
+    pinMode(resetPin, OUTPUT);
+    digitalWrite(resetPin, HIGH);
+
     pinMode(bmpPowerPin, OUTPUT);
     digitalWrite(bmpPowerPin, HIGH);
     Serial.print(F("BMP085 connecting"));
@@ -155,7 +159,7 @@ float getAltitude() {
         float currentAlt = bmp.pressureToAltitude(seaLevelPressure, event.pressure, temperature) * METERS_TO_FEET_RATIO;
         return smoothAltitude(currentAlt);
     }
-    
+
     return -1;
 }
 float smoothAltitude(float newAlt) {
@@ -172,6 +176,24 @@ float smoothAltitude(float newAlt) {
         sum += lastAltitudes[i];
     }
     return sum / ALTITUDE_SMOOTHING;
+}
+// this is to check and see if our barometer is just returning 0s and reset the arduino
+void checkBarometerDataIntegrity() {
+    // only check when our altitude is at the end in order to avoid the initial {0,0,0...}
+    if (lastAltitudeIndex != ALTITUDE_SMOOTHING) {
+        return;
+    }
+    bool allZeros = true;
+    for (int i = 0; i < ALTITUDE_SMOOTHING; i++) {
+        if (lastAltitudes[i] != 0.0f) {
+            allZeros = false;
+        }
+    }
+    if (allZeros) {
+        Serial.println("RESETTING ARDUINO");
+        digitalWrite(resetPin, LOW);
+    }
+
 }
 
 #endif
@@ -281,9 +303,12 @@ void loop()
             Serial.println((int)recvByte);
             break;
         }
+        checkBarometerDataIntegrity();
+
     }
 #endif
 }
+
 
 void validateAck(byte ackResponse) {
     boolean correctResponse = (ackResponse == ackVal);
@@ -336,8 +361,8 @@ byte sendData(void* val, int numBytes) {
     for (int i = 0; i < numBytes; i++)
     {
         Serial.print(((byte*)val)[i]);
-        if(i < numBytes - 1)
-        Serial.print(F(", "));
+        if (i < numBytes - 1)
+            Serial.print(F(", "));
     }
     Serial.println(F("}"));
 
