@@ -1,12 +1,4 @@
-#define ROLE_GROUND 0
-#define ROLE_SKY 1
-
-// SET THE TARGET ROLE HERE -------------------------------
-#define ROLE ROLE_GROUND
-
-#if ROLE != ROLE_SKY && ROLE != ROLE_GROUND
-#error "ROLE must be ROLE_SKY or ROLE_GROUND"
-#endif
+#include "Config.h"
 
 // Standard libraries
 #include <Arduino.h>
@@ -46,10 +38,6 @@ const byte heightInitialVal = 0b01010101; // 85 decimal
 const byte ackVal = 0b11110000; // 240 decimal
 
 #if ROLE == ROLE_GROUND
-// time in between "heartbeat" signals - determine connection health and recieve back altitude
-#define HEARTBEAT_INTERVAL_MILLIS 300
-// The threshold when the indicator LED changes
-#define ALTITUDE_TARGET_THRESH_FEET 100
 
 // can be digital pins
 uint8_t triggerButtonPin = A0;
@@ -74,11 +62,6 @@ float lastAltitude = NAN; // NAN indicates that altitude is not stored yet
 float rawLastAltitude = NAN;
 
 #elif ROLE == ROLE_SKY
-
-#define TRIGGER_SERVO_ANGLE 90
-#define RESET_SERVO_ANGLE 0
-#define METERS_TO_FEET_RATIO (1250./381.)
-#define ALTITUDE_SMOOTHING 10
 
 // Should be a PWM pin
 uint8_t servoPin = 5;
