@@ -39,8 +39,8 @@ void handleAck() {
 }
 #endif
 
-void validateAck(byte ackResponse) {
-  boolean isCorrectResponse = (ackResponse == ackVal);
+bool validateAck(byte ackResponse) {
+  bool isCorrectResponse = (ackResponse == ackVal);
 
   if (isCorrectResponse) {
     Serial.println(F("Comms healthy"));
@@ -55,6 +55,7 @@ void validateAck(byte ackResponse) {
   // We have validated that data was successfully sent; we can consider this a heartbeat.
   lastHeartbeat = millis();
 #endif
+  return isCorrectResponse;
 }
 
 // receives numBytes bytes from the radio into recvBuf

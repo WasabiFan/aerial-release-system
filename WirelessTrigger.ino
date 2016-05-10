@@ -56,6 +56,8 @@ uint8_t indicatorLEDRedPin = 6;
 unsigned long lastHeartbeat = 0;
 bool isCommHealthy = false;
 
+unsigned long lastCommandTime = 0;
+
 float rawCalibrationAltitude = 0;
 bool isAltitudeCalibrated = false;
 float lastAltitude = NAN; // NAN indicates that altitude is not stored yet
@@ -144,20 +146,25 @@ void loop() {
   // Require a long press to activate
   if (triggerButton.longPress()) {
     Serial.println(F("Sending trigger byte"));
-    validateAck(sendByte(triggerVal));
+    if (validateAck(sendByte(triggerVal)))
+        lastCommandTime = millis();
   }
   else if (resetButton.longPress()) {
     Serial.println(F("Sending reset byte"));
-    validateAck(sendByte(resetVal));
+    if(validateAck(sendByte(resetVal)))
+        lastCommandTime = millis();
   }
   else if (calibButton.pushed()) {
     if (isnan(rawLastAltitude)) {
       // if we haven't received an altitude yet, we can't calibrate
       Serial.println(F("Tried to calibrate, but haven't received altitude packet yet."));
-    } else {
+    }
+    else {
       rawCalibrationAltitude = rawLastAltitude;
       Serial.println("New calibrated base altitude: " + String(rawCalibrationAltitude));
       isAltitudeCalibrated = true;
+
+      lastCommandTime = millis();
     }
   }
   else if (millis() - lastHeartbeat >= HEARTBEAT_INTERVAL_MILLIS) {
@@ -169,7 +176,10 @@ void loop() {
   //Serial.println("Current calibrated altitude: " + String(lastAltitude));
 
   bool altitudeAboveThreshold = isAltitudeCalibrated && !isnan(lastAltitude) && lastAltitude >= ALTITUDE_TARGET_THRESH_FEET;
-  if (isCommHealthy && altitudeAboveThreshold) {
+  if (millis() - lastCommandTime <= COMMAND_SIG_DURATION) {
+    setStatusLED(255, 255, 0); // Yellow
+  }
+  else if (isCommHealthy && altitudeAboveThreshold) {
     setStatusLED(0, 255, 0); // Green
   }
   else if (isCommHealthy) {

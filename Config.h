@@ -23,3 +23,6 @@
 #define RESET_SERVO_ANGLE 0
 // Number of altitude samples to average
 #define ALTITUDE_SMOOTHING 10
+
+// Time (in ms) that the indicator LED will flash for when a command is successfully registered
+#define COMMAND_SIG_DURATION 100
