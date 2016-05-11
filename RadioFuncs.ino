@@ -6,6 +6,7 @@ void initializeRadio() {
 
     radio.enableAckPayload();
     radio.enableDynamicPayloads();
+    radio.setPALevel(RF24_PA_MAX);
 
     // open communication lines based on role
 #if ROLE == ROLE_GROUND

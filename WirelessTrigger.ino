@@ -65,9 +65,12 @@ float rawLastAltitude = NAN;
 
 #elif ROLE == ROLE_SKY
 
+// The code is in place to automatically reset the arduino if problems arise.
+// It hasn't been proven working, so we aren't wiring it up.
+uint8_t resetPin = 9;
+
 // Should be a PWM pin
 uint8_t servoPin = 5;
-uint8_t resetPin = 9;
 Servo actuationServo;
 
 float lastAltitudes[ALTITUDE_SMOOTHING];
@@ -76,6 +79,9 @@ int lastAltitudeIndex;
 // Parameter is sensor ID
 Adafruit_BMP085_Unified bmp = Adafruit_BMP085_Unified(10085);
 bool bmpConnected = false;
+
+// We use a digital output pin to power the altimiter so that we
+//  don't need to splice wires.
 // TODO: power this from an actual power pin
 uint8_t bmpPowerPin = 4;
 #endif

@@ -6,7 +6,7 @@
 #define ROLE_SKY 1
 
 // SET THE TARGET ROLE HERE -------------------------------
-#define ROLE ROLE_GROUND
+#define ROLE ROLE_SKY
 
 #if ROLE != ROLE_SKY && ROLE != ROLE_GROUND
 #error "ROLE must be ROLE_SKY or ROLE_GROUND"
